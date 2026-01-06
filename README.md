@@ -13,6 +13,8 @@ await db.users.put({ id: "u1", name: "Kim", email: "kim@example.com" });
 const user = await db.users.get("u1");
 ```
 
+[Live Example](https://stackblitz.com/edit/schema-idb)
+
 ---
 
 ## What schema-idb provides
