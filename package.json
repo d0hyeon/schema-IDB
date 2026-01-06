@@ -1,6 +1,6 @@
 {
-  "name": "browser-db",
-  "version": "1.0.0",
+  "name": "schema-idb",
+  "version": "0.0.1",
   "description": "Type-safe IndexedDB wrapper with chainable transactions",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
