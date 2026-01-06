@@ -1,0 +1,11 @@
+src/
+tests/
+tsconfig.json
+vitest.config.ts
+.npmrc
+node_modules/
+.git/
+.gitignore
+.DS_Store
+src/example.ts
+package-lock.json

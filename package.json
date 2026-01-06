@@ -16,22 +16,33 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run minify",
+    "minify": "esbuild dist/*.js --outdir=dist --minify --allow-overwrite --keep-names",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "prepublishOnly": "npm run clean && npm run build && npm run test:run"
   },
   "keywords": [
     "indexeddb",
     "idb",
     "database",
     "storage",
-    "typescript"
+    "typescript",
+    "browser",
+    "client-side",
+    "schema",
+    "type-safe"
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": false,
   "devDependencies": {
+    "esbuild": "^0.27.2",
     "fake-indexeddb": "^6.2.5",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16"
