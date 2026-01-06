@@ -26,7 +26,7 @@ type ConstrainedKey<S extends StoreSchema> = PrimaryKeyType<S> & IDBCompatibleKe
 // ============================================================================
 
 export interface TransactionOptions {
-  mode?: 'readonly' | 'readwrite';
+  mode?: 'write';
   durability?: 'default' | 'strict' | 'relaxed';
 }
 
@@ -127,6 +127,8 @@ export type Transaction<
 > = {
   [K in TNames]: TransactionStoreAccessor<GetStoreSchema<TStores, K>>;
 } & {
+  /** The underlying IDBTransaction */
+  readonly raw: IDBTransaction;
   /** Commit the transaction and wait for completion */
   commit(): Promise<void>;
   /** Abort the transaction */
@@ -146,11 +148,13 @@ function buildTransaction<
   TNames extends StoreNames<TStores>
 >(
   storeAccessors: Record<string, TransactionStoreAccessor<StoreSchema>>,
+  raw: IDBTransaction,
   commit: () => Promise<void>,
   abort: () => void
 ): Transaction<TStores, TNames> {
   return {
     ...storeAccessors,
+    raw,
     commit,
     abort,
   } as Transaction<TStores, TNames>;
@@ -161,12 +165,14 @@ export function createStartTransaction<TStores extends readonly AnySchemaStore[]
   _storeDefinitions: TStores
 ) {
   return function startTransaction<TNames extends StoreNames<TStores>>(
-    storeNames: TNames[],
+    storeNamesInput: TNames | TNames[],
     options: TransactionOptions = {}
   ): Transaction<TStores, TNames> {
-    const { mode = 'readonly', durability = 'default' } = options;
+    const storeNames = Array.isArray(storeNamesInput) ? storeNamesInput : [storeNamesInput];
+    const { mode, durability = 'default' } = options;
+    const idbMode: IDBTransactionMode = mode === 'write' ? 'readwrite' : 'readwrite';
 
-    const tx = db.transaction(storeNames, mode, { durability });
+    const tx = db.transaction(storeNames, idbMode, { durability });
 
     // Create store accessors
     const storeAccessors: Record<string, TransactionStoreAccessor<StoreSchema>> = {};
@@ -191,6 +197,6 @@ export function createStartTransaction<TStores extends readonly AnySchemaStore[]
       tx.abort();
     };
 
-    return buildTransaction<TStores, TNames>(storeAccessors, commit, abort);
+    return buildTransaction<TStores, TNames>(storeAccessors, tx, commit, abort);
   };
 }

@@ -86,7 +86,7 @@ export type SchemaDatabase<TStores extends readonly AnySchemaStore[]> = {
 
   /** Start a transaction for atomic multi-store operations */
   startTransaction<TNames extends StoreNames<TStores>>(
-    storeNames: TNames[],
+    storeNames: TNames | TNames[],
     options?: TransactionOptions
   ): Transaction<TStores, TNames>;
 } & {
@@ -244,7 +244,8 @@ function buildSchemaDatabase<TStores extends readonly AnySchemaStore[]>(
     startTransaction(...args: unknown[]) {
       if (!state.startTransaction) {
         // Return a proxy that waits for ready
-        const [storeNames, options] = args as [string[], TransactionOptions?];
+        const [storeNamesInput, options] = args as [string | string[], TransactionOptions?];
+        const storeNames = Array.isArray(storeNamesInput) ? storeNamesInput : [storeNamesInput];
         return createLazyTransaction(state, storeNames, options);
       }
       return state.startTransaction(...args as Parameters<typeof state.startTransaction>);
@@ -274,6 +275,9 @@ function createLazyTransaction<TStores extends readonly AnySchemaStore[]>(
 ): Transaction<TStores, string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lazyTx: any = {
+    get raw() {
+      throw new Error('Transaction raw is not available before ready state. Use await db.waitForReady() before starting transactions.');
+    },
     async commit() {
       await state.readyPromise;
       if (!state.startTransaction) {

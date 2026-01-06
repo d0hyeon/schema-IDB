@@ -272,17 +272,19 @@ describe('Transaction', () => {
   });
 
   describe('모드 옵션', () => {
-    it('readonly 모드에서는 쓰기 작업이 실패해야 함', async () => {
-      const tx = db.startTransaction(['accounts'], { mode: 'readonly' });
+    it('기본 모드는 readwrite로 쓰기 작업이 가능해야 함', async () => {
+      const tx = db.startTransaction(['accounts']);
 
-      // readonly 트랜잭션에서 put 시도
-      expect(() => {
-        tx.accounts.put({ id: 'test', name: 'Test', balance: 0 });
-      }).toThrow();
+      tx.accounts.put({ id: 'test', name: 'Test', balance: 0 });
+
+      await tx.commit();
+
+      const account = await db.accounts.get('test');
+      expect(account).toBeDefined();
     });
 
-    it('readwrite 모드에서는 읽기/쓰기 모두 가능해야 함', async () => {
-      const tx = db.startTransaction(['accounts'], { mode: 'readwrite' });
+    it('write 모드에서는 읽기/쓰기 모두 가능해야 함', async () => {
+      const tx = db.startTransaction(['accounts'], { mode: 'write' });
 
       tx.accounts.get('acc1');
       tx.accounts.put({ id: 'acc3', name: 'Account 3', balance: 300 });
@@ -291,6 +293,32 @@ describe('Transaction', () => {
 
       const account = await db.accounts.get('acc3');
       expect(account).toBeDefined();
+    });
+  });
+
+  describe('단일 스토어명 인자', () => {
+    it('단일 스토어명으로 트랜잭션을 시작할 수 있어야 함', async () => {
+      const tx = db.startTransaction('accounts');
+
+      tx.accounts.put({ id: 'single', name: 'Single Store', balance: 999 });
+
+      await tx.commit();
+
+      const account = await db.accounts.get('single');
+      expect(account).toBeDefined();
+      expect(account?.name).toBe('Single Store');
+    });
+  });
+
+  describe('raw 속성', () => {
+    it('트랜잭션의 raw IDBTransaction에 접근할 수 있어야 함', async () => {
+      const tx = db.startTransaction(['accounts']);
+
+      expect(tx.raw).toBeDefined();
+      expect(tx.raw).toBeInstanceOf(IDBTransaction);
+
+      tx.accounts.put({ id: 'raw-test', name: 'Raw Test', balance: 0 });
+      await tx.commit();
     });
   });
 });
