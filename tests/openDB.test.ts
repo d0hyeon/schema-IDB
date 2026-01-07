@@ -25,7 +25,7 @@
  * - 실제 IndexedDB 초기화는 비동기로 진행됨
  * - 스토어 작업은 자동으로 ready 상태를 기다림
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { openDB } from '../src/createSchemaDB.js';
 import { defineStore } from '../src/schema.js';
 import { field } from '../src/field.js';
@@ -379,7 +379,7 @@ describe('openDB', () => {
       }).rejects.toThrow(/would be deleted/);
     });
 
-    it('preserve일 때 스토어가 __storeName_deleted__로 리네이밍되어야 함', async () => {
+    it('preserve일 때 스토어가 __storeName_deleted_v{version}__로 리네이밍되어야 함', async () => {
       const usersStore = defineStore('users', {
         id: field.string().primaryKey(),
       });
@@ -389,7 +389,7 @@ describe('openDB', () => {
         title: field.string(),
       });
 
-      // 두 스토어로 DB 생성
+      // 두 스토어로 DB 생성 (version 1)
       const db1 = openDB({
         name: 'removed-store-preserve-db',
         versionStrategy: 'auto',
@@ -400,7 +400,8 @@ describe('openDB', () => {
       await db1.posts.put({ id: 'p1', title: 'Test Post' });
       db1.close();
 
-      // posts 스토어 없이 preserve로 다시 열기
+      // posts 스토어 없이 preserve로 다시 열기 (version 2)
+      // 백업 스토어 이름에 기존 버전(1)이 포함됨
       const db2 = openDB({
         name: 'removed-store-preserve-db',
         versionStrategy: 'auto',
@@ -410,13 +411,13 @@ describe('openDB', () => {
 
       await db2.waitForReady();
 
-      // 백업 스토어가 생성되었는지 확인
-      expect(db2.raw.objectStoreNames.contains('__posts_deleted__')).toBe(true);
+      // 백업 스토어가 생성되었는지 확인 (버전 1에서 삭제되었으므로 v1)
+      expect(db2.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(true);
       expect(db2.raw.objectStoreNames.contains('posts')).toBe(false);
 
       // 백업 스토어의 데이터가 유지되었는지 확인
-      const tx = db2.raw.transaction('__posts_deleted__', 'readonly');
-      const store = tx.objectStore('__posts_deleted__');
+      const tx = db2.raw.transaction('__posts_deleted_v1__', 'readonly');
+      const store = tx.objectStore('__posts_deleted_v1__');
       const request = store.get('p1');
 
       await new Promise<void>((resolve) => {
@@ -426,6 +427,190 @@ describe('openDB', () => {
         };
       });
 
+      db2.close();
+    });
+
+    it('같은 스토어를 여러 번 삭제/재생성해도 백업 충돌이 없어야 함', async () => {
+      const usersStore = defineStore('users', {
+        id: field.string().primaryKey(),
+      });
+
+      const postsStore = defineStore('posts', {
+        id: field.string().primaryKey(),
+        title: field.string(),
+      });
+
+      // 1. 두 스토어로 DB 생성 (version 1)
+      const db1 = openDB({
+        name: 'removed-store-collision-db',
+        versionStrategy: 'auto',
+        stores: [usersStore, postsStore] as const,
+      });
+
+      await db1.waitForReady();
+      await db1.posts.put({ id: 'p1', title: 'Post v1' });
+      db1.close();
+
+      // 2. posts 스토어 삭제 (version 2) - __posts_deleted_v1__ 생성
+      const db2 = openDB({
+        name: 'removed-store-collision-db',
+        versionStrategy: 'auto',
+        removedStoreStrategy: 'preserve',
+        stores: [usersStore] as const,
+      });
+
+      await db2.waitForReady();
+      expect(db2.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(true);
+      db2.close();
+
+      // 3. posts 스토어 다시 추가 (version 3)
+      const db3 = openDB({
+        name: 'removed-store-collision-db',
+        versionStrategy: 'auto',
+        stores: [usersStore, postsStore] as const,
+      });
+
+      await db3.waitForReady();
+      await db3.posts.put({ id: 'p2', title: 'Post v3' });
+      expect(db3.raw.objectStoreNames.contains('posts')).toBe(true);
+      expect(db3.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(true);
+      db3.close();
+
+      // 4. posts 스토어 다시 삭제 (version 4) - __posts_deleted_v3__ 생성 (충돌 없음)
+      const db4 = openDB({
+        name: 'removed-store-collision-db',
+        versionStrategy: 'auto',
+        removedStoreStrategy: 'preserve',
+        stores: [usersStore] as const,
+      });
+
+      await db4.waitForReady();
+      // 두 백업 스토어가 모두 존재해야 함
+      expect(db4.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(true);
+      expect(db4.raw.objectStoreNames.contains('__posts_deleted_v3__')).toBe(true);
+      expect(db4.raw.objectStoreNames.contains('posts')).toBe(false);
+
+      // 각 백업의 데이터가 올바른지 확인
+      const tx1 = db4.raw.transaction('__posts_deleted_v1__', 'readonly');
+      const store1 = tx1.objectStore('__posts_deleted_v1__');
+      const req1 = store1.get('p1');
+      await new Promise<void>((resolve) => {
+        req1.onsuccess = () => {
+          expect(req1.result).toEqual({ id: 'p1', title: 'Post v1' });
+          resolve();
+        };
+      });
+
+      const tx2 = db4.raw.transaction('__posts_deleted_v3__', 'readonly');
+      const store2 = tx2.objectStore('__posts_deleted_v3__');
+      const req2 = store2.get('p2');
+      await new Promise<void>((resolve) => {
+        req2.onsuccess = () => {
+          expect(req2.result).toEqual({ id: 'p2', title: 'Post v3' });
+          resolve();
+        };
+      });
+
+      db4.close();
+    });
+
+    it('explicit 모드에서 removedStoreStrategy: preserve가 동작해야 함', async () => {
+      const usersStore = defineStore('users', {
+        id: field.string().primaryKey(),
+      });
+
+      const postsStore = defineStore('posts', {
+        id: field.string().primaryKey(),
+        title: field.string(),
+      });
+
+      // 두 스토어로 DB 생성 (version 1)
+      const db1 = openDB({
+        name: 'explicit-preserve-db',
+        version: 1,
+        versionStrategy: 'explicit',
+        stores: [usersStore, postsStore] as const,
+      });
+
+      await db1.waitForReady();
+      await db1.posts.put({ id: 'p1', title: 'Test Post' });
+      db1.close();
+
+      // posts 스토어 없이 preserve로, 버전 업해서 다시 열기 (version 2)
+      const db2 = openDB({
+        name: 'explicit-preserve-db',
+        version: 2,
+        versionStrategy: 'explicit',
+        removedStoreStrategy: 'preserve',
+        stores: [usersStore] as const,
+      });
+
+      await db2.waitForReady();
+
+      // 백업 스토어가 생성되었는지 확인 (버전 1에서 삭제됨)
+      expect(db2.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(true);
+      expect(db2.raw.objectStoreNames.contains('posts')).toBe(false);
+
+      // 백업 스토어의 데이터가 유지되었는지 확인
+      const tx = db2.raw.transaction('__posts_deleted_v1__', 'readonly');
+      const store = tx.objectStore('__posts_deleted_v1__');
+      const request = store.get('p1');
+
+      await new Promise<void>((resolve) => {
+        request.onsuccess = () => {
+          expect(request.result).toEqual({ id: 'p1', title: 'Test Post' });
+          resolve();
+        };
+      });
+
+      db2.close();
+    });
+
+    it('explicit 모드에서 버전을 올리지 않으면 스키마 변경이 적용되지 않아야 함', async () => {
+      const usersStore = defineStore('users', {
+        id: field.string().primaryKey(),
+      });
+
+      const postsStore = defineStore('posts', {
+        id: field.string().primaryKey(),
+        title: field.string(),
+      });
+
+      // 두 스토어로 DB 생성 (version 1)
+      const db1 = openDB({
+        name: 'explicit-no-bump-db',
+        version: 1,
+        versionStrategy: 'explicit',
+        stores: [usersStore, postsStore] as const,
+      });
+
+      await db1.waitForReady();
+      await db1.posts.put({ id: 'p1', title: 'Test Post' });
+      db1.close();
+
+      // posts 스토어 없이, 같은 버전(1)으로 다시 열기 - 스키마 변경 적용되지 않음
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const db2 = openDB({
+        name: 'explicit-no-bump-db',
+        version: 1,
+        versionStrategy: 'explicit',
+        removedStoreStrategy: 'preserve',
+        stores: [usersStore] as const,
+      });
+
+      await db2.waitForReady();
+
+      // 경고 메시지가 출력되었는지 확인
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Schema changes detected but version not bumped')
+      );
+
+      // posts 스토어가 여전히 존재해야 함 (스키마 변경 적용 안됨)
+      expect(db2.raw.objectStoreNames.contains('posts')).toBe(true);
+      expect(db2.raw.objectStoreNames.contains('__posts_deleted_v1__')).toBe(false);
+
+      warnSpy.mockRestore();
       db2.close();
     });
   });
