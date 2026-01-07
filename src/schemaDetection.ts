@@ -481,10 +481,11 @@ export async function determineAutoVersion(
     if (change.type === 'store_delete') {
       if (removedStoreStrategy === 'preserve') {
         // Convert store_delete to store_rename (safe change)
+        // Use currentVersion (the version when store was last active)
         changes.safe.push({
           type: 'store_rename',
           oldName: change.storeName,
-          newName: `__${change.storeName}_deleted__`,
+          newName: `__${change.storeName}_deleted_v${currentVersion}__`,
         });
       } else {
         // Keep as dangerous

@@ -333,7 +333,7 @@ const db = openDB({
   name: "MyApp",
   versionStrategy: "auto",
   // 'error' (default): Throws an error when stores are removed
-  // 'preserve': Renames removed stores to __storeName_deleted__ as backup.
+  // 'preserve': Renames removed stores to __storeName_deleted_v{version}__ as backup.
   //             Preserved stores are isolated from the typed API to avoid future name collisions.
   removedStoreStrategy: "preserve",
   stores: [usersStore] as const,
@@ -350,7 +350,7 @@ When `versionStrategy` is `"explicit"`:
 
 ```
 [schema-idb] Schema changes detected but version not bumped:
-- Rename store "oldStore" to "__oldStore_deleted__"
+- Rename store "oldStore" to "__oldStore_deleted_v2__"
 Current DB version: 1, Provided version: 1
 Bump the version to apply these changes.
 ```
@@ -364,7 +364,7 @@ const usersStore = defineStore("users", {
   // ...
 }).addMigration("003-delete-old-store", (db) => {
   db.deleteObjectStore("oldStore");
-  db.deleteObjectStore("__oldStore_deleted__"); // Remove backup too
+  db.deleteObjectStore("__oldStore_deleted_v2__"); // Remove backup too
 });
 ```
 
