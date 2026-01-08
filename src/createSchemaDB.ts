@@ -76,8 +76,10 @@ export interface SchemaDBConfig<TStores extends readonly AnySchemaStore[]> {
    * Strategy for handling stores removed from schema
    * - 'error': Throw an error (default)
    * - 'preserve': Rename to __storeName_deleted_v{version}__ as backup
+   * - 'drop': Delete the store and its data
+   * - 'ignore': Keep the store as-is (no changes)
    */
-  removedStoreStrategy?: 'error' | 'preserve';
+  removedStoreStrategy?: 'error' | 'preserve' | 'drop' | 'ignore';
   stores: TStores;
   onBlocked?: () => void;
   onVersionChange?: () => void;
@@ -522,7 +524,7 @@ async function initializeDatabase<TStores extends readonly AnySchemaStore[]>(
   name: string,
   explicitVersion: number | undefined,
   versionStrategy: 'explicit' | 'auto',
-  removedStoreStrategy: 'error' | 'preserve',
+  removedStoreStrategy: 'error' | 'preserve' | 'drop' | 'ignore',
   stores: TStores,
   allMigrations: Migration[],
   onBlocked?: () => void,
@@ -581,17 +583,28 @@ async function initializeDatabase<TStores extends readonly AnySchemaStore[]>(
 
           for (const change of changes.dangerous) {
             if (change.type === 'store_delete') {
-              if (removedStoreStrategy === 'preserve') {
-                // Convert store_delete to store_rename (safe change)
-                // Use currentVersion (the version when store was last active)
-                changes.safe.push({
-                  type: 'store_rename',
-                  oldName: change.storeName,
-                  newName: `__${change.storeName}_deleted_v${currentVersion}__`,
-                });
-              } else {
-                // Keep as dangerous - will throw error
-                remainingDangerous.push(change);
+              switch (removedStoreStrategy) {
+                case 'preserve':
+                  // Convert store_delete to store_rename (safe change)
+                  // Use currentVersion (the version when store was last active)
+                  changes.safe.push({
+                    type: 'store_rename',
+                    oldName: change.storeName,
+                    newName: `__${change.storeName}_deleted_v${currentVersion}__`,
+                  });
+                  break;
+                case 'drop':
+                  // Convert store_delete to safe change (explicit deletion)
+                  changes.safe.push(change);
+                  break;
+                case 'ignore':
+                  // Remove from changes entirely - store stays as-is
+                  break;
+                case 'error':
+                default:
+                  // Keep as dangerous - will throw error
+                  remainingDangerous.push(change);
+                  break;
               }
             } else {
               // Other dangerous changes remain dangerous
@@ -604,7 +617,7 @@ async function initializeDatabase<TStores extends readonly AnySchemaStore[]>(
             const dangerousDescriptions = remainingDangerous.map(c => {
               switch (c.type) {
                 case 'store_delete':
-                  return `Store "${c.storeName}" would be deleted. Use removedStoreStrategy: 'preserve' to backup, or add a migration to explicitly delete it.`;
+                  return `Store "${c.storeName}" would be deleted. Use removedStoreStrategy: 'preserve', 'drop', or 'ignore' to handle this.`;
                 case 'keypath_change':
                   return `Store "${c.storeName}" keyPath changed from "${c.oldKeyPath}" to "${c.newKeyPath}". This requires recreating the store with a manual migration.`;
                 default:
@@ -628,6 +641,7 @@ async function initializeDatabase<TStores extends readonly AnySchemaStore[]>(
             const changeDescriptions = changes.safe.map(c => {
               switch (c.type) {
                 case 'store_add': return `- Add store "${c.storeName}"`;
+                case 'store_delete': return `- Delete store "${c.storeName}"`;
                 case 'store_rename': return `- Rename store "${c.oldName}" to "${c.newName}"`;
                 case 'index_add': return `- Add index "${c.indexName}" on "${c.storeName}"`;
                 case 'index_delete': return `- Delete index "${c.indexName}" from "${c.storeName}"`;

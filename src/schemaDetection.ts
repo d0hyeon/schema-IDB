@@ -345,6 +345,12 @@ export function applySafeChanges(
         store.deleteIndex(change.indexName);
         break;
       }
+
+      case 'store_delete': {
+        // Drop the store entirely (used when removedStoreStrategy is 'drop')
+        db.deleteObjectStore(change.storeName);
+        break;
+      }
     }
   }
 }
@@ -400,7 +406,7 @@ export async function openDatabaseForSchemaRead(dbName: string): Promise<IDBData
 
 /** Options for determineAutoVersion */
 export interface AutoVersionOptions {
-  removedStoreStrategy?: 'error' | 'preserve';
+  removedStoreStrategy?: 'error' | 'preserve' | 'drop' | 'ignore';
 }
 
 /**
@@ -437,17 +443,28 @@ export async function determineAutoVersion(
 
   for (const change of changes.dangerous) {
     if (change.type === 'store_delete') {
-      if (removedStoreStrategy === 'preserve') {
-        // Convert store_delete to store_rename (safe change)
-        // Use currentVersion (the version when store was last active)
-        changes.safe.push({
-          type: 'store_rename',
-          oldName: change.storeName,
-          newName: `__${change.storeName}_deleted_v${currentVersion}__`,
-        });
-      } else {
-        // Keep as dangerous
-        remainingDangerous.push(change);
+      switch (removedStoreStrategy) {
+        case 'preserve':
+          // Convert store_delete to store_rename (safe change)
+          // Use currentVersion (the version when store was last active)
+          changes.safe.push({
+            type: 'store_rename',
+            oldName: change.storeName,
+            newName: `__${change.storeName}_deleted_v${currentVersion}__`,
+          });
+          break;
+        case 'drop':
+          // Convert store_delete to safe change (explicit deletion)
+          changes.safe.push(change);
+          break;
+        case 'ignore':
+          // Remove from changes entirely - store stays as-is
+          break;
+        case 'error':
+        default:
+          // Keep as dangerous
+          remainingDangerous.push(change);
+          break;
       }
     } else {
       // Other dangerous changes remain dangerous
@@ -462,7 +479,7 @@ export async function determineAutoVersion(
     const dangerousDescriptions = changes.dangerous.map(c => {
       switch (c.type) {
         case 'store_delete':
-          return `Store "${c.storeName}" would be deleted. Use removedStoreStrategy: 'preserve' to backup, or add a migration to explicitly delete it.`;
+          return `Store "${c.storeName}" would be deleted. Use removedStoreStrategy: 'preserve', 'drop', or 'ignore' to handle this.`;
         case 'keypath_change':
           return `Store "${c.storeName}" keyPath changed from "${c.oldKeyPath}" to "${c.newKeyPath}". This requires recreating the store with a manual migration.`;
         default:
