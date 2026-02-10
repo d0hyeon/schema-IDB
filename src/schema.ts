@@ -154,11 +154,10 @@ function createStoreBuilder<S extends StoreSchema, TName extends string>(
 }
 
 /**
- * Define an ObjectStore with Drizzle/Zod-style schema
  *
  * @example
  * ```ts
- * import { defineStore, field } from 'idb-wrapper';
+ * import { defineStore, field } from 'schema-idb';
  *
  * interface Address {
  *   detail: string;
@@ -178,8 +177,8 @@ function createStoreBuilder<S extends StoreSchema, TName extends string>(
  *   });
  *
  * // Type is automatically inferred
- * type UserInput = typeof usersStore._input;
- * type UserOutput = typeof usersStore._output;
+ * type UserStoreTYpe = InferStore<typeof usersStore>
+
  * ```
  */
 export function defineStore<const TName extends string, S extends StoreSchema>(
