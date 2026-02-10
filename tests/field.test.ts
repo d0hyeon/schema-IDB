@@ -10,7 +10,6 @@
  * - field.tuple(schema): 튜플 필드 생성
  * - field.enum(values): 열거형 필드 생성
  * - field.nativeEnum(enumObj): TypeScript 네이티브 열거형 필드 생성
- * - field.custom<T>(): 커스텀 타입 필드 생성
  *
  * 체인 메서드:
  * - .optional(): 필드를 선택적으로 만듦 (undefined 허용)
@@ -215,18 +214,6 @@ describe('Field Builder', () => {
       const f = field.nativeEnum(Role).default(Role.User);
       expect(f._def._hasDefault).toBe(true);
       expect(f._def._default).toBe(Role.User);
-    });
-  });
-
-  describe('복합 타입 - custom()', () => {
-    it('field.custom<T>()는 커스텀 타입을 지원해야 함', () => {
-      interface MyCustomType {
-        foo: string;
-        bar: number;
-      }
-
-      const f = field.custom<MyCustomType>();
-      expect(f._def._optional).toBe(false);
     });
   });
 

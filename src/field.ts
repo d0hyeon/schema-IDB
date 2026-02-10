@@ -332,9 +332,6 @@ export const field = {
   ): FieldBuilder<T[keyof T]> => {
     return createFieldBuilder<T[keyof T]>();
   },
-
-  /** Any custom type (legacy) */
-  custom: <T>() => createFieldBuilder<T>(),
 };
 
 // ============================================================================
