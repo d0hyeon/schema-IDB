@@ -40,6 +40,7 @@ export type {
   InferInput,
   InferOutput,
   InferStore,
+  DefinedStore,
   PrimaryKeyField,
   PrimaryKeyType,
   IndexedFields,

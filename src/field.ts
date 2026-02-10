@@ -429,3 +429,30 @@ export type InferStore<TStore> = TStore extends { schema: infer S }
     ? InferOutput<S>
     : never
   : never;
+
+/**
+ * Type constraint for type-first store definitions
+ * Use with `satisfies` to validate schema against a pre-defined type
+ *
+ * @example
+ * interface User {
+ *   id: string;
+ *   name: string;
+ *   age?: number;
+ * }
+ *
+ * const usersStore = defineStore('users', {
+ *   id: field.string().primaryKey(),
+ *   name: field.string(),
+ *   age: field.number().optional(),
+ * }) satisfies DefinedStore<User>;
+ */
+export interface DefinedStore<T> {
+  _output: T;
+  name: string;
+  schema: StoreSchema;
+  keyPath: string;
+  indexes: readonly unknown[];
+  migrations: readonly unknown[];
+  defaults: Partial<T>;
+}

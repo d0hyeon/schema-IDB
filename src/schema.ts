@@ -5,7 +5,6 @@ import type {
   PrimaryKeyField,
   PrimaryKeyType,
   FieldBuilder,
-  IndexOptions,
 } from './field.js';
 import type { StoreDefinition, IndexDefinition, Migration, MigrationFn } from './types.js';
 
@@ -154,31 +153,31 @@ function createStoreBuilder<S extends StoreSchema, TName extends string>(
 }
 
 /**
+ * Define an ObjectStore with schema
  *
- * @example
+ * @example Schema-first (infer type from schema)
  * ```ts
- * import { defineStore, field } from 'schema-idb';
+ * const usersStore = defineStore('users', {
+ *   id: field.string().primaryKey(),
+ *   name: field.string(),
+ *   age: field.number().optional(),
+ * });
+ * type User = InferStore<typeof usersStore>;
+ * ```
  *
- * interface Address {
- *   detail: string;
- *   post: string;
+ * @example Type-first (validate schema against type)
+ * ```ts
+ * interface User {
+ *   id: string;
+ *   name: string;
+ *   age?: number;
  * }
  *
  * const usersStore = defineStore('users', {
  *   id: field.string().primaryKey(),
  *   name: field.string(),
- *   email: field.string().index({ unique: true }),
- *   age: field.number().optional().default(0),
- *   address: field.object<Address>().optional().default({ detail: '', post: '' }),
- *   tags: field.array<string>().optional(),
- * })
- *   .addMigration('001-seed-data', (db, tx) => {
- *     // seed initial data
- *   });
- *
- * // Type is automatically inferred
- * type UserStoreTYpe = InferStore<typeof usersStore>
-
+ *   age: field.number().optional(),
+ * }) satisfies DefinedStore<User>;
  * ```
  */
 export function defineStore<const TName extends string, S extends StoreSchema>(
