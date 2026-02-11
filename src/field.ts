@@ -11,6 +11,10 @@ export interface IndexOptions {
   multiEntry?: boolean;
 }
 
+export interface AutoIncrementOptions {
+  autoIncrement?: boolean;
+}
+
 // ============================================================================
 // Type Builder (for nested types - no index/primaryKey)
 // ============================================================================
@@ -94,14 +98,17 @@ export interface FieldDef<
   T = unknown,
   Optional extends boolean = false,
   HasDefault extends boolean = false,
-  IsIndexed extends boolean = false
+  IsIndexed extends boolean = false,
+  AutoIncrement extends boolean = false,
+  IsPrimaryKey extends boolean = false
 > {
   _type: T;
   _optional: Optional;
   _hasDefault: HasDefault;
   _isIndexed: IsIndexed;
+  _autoIncrement: AutoIncrement;
+  _isPrimaryKey: IsPrimaryKey;
   _default?: T;
-  _primaryKey: boolean;
   _indexOptions?: IndexOptions;
 }
 
@@ -109,28 +116,60 @@ export interface FieldDef<
 // Field Builder Interface
 // ============================================================================
 
+/** Base field builder interface */
+interface BaseFieldBuilder<
+  T,
+  Optional extends boolean = false,
+  HasDefault extends boolean = false,
+  IsIndexed extends boolean = false,
+  AutoIncrement extends boolean = false,
+  IsPrimaryKey extends boolean = false
+> {
+  _def: FieldDef<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey>;
+
+  /** Mark field as optional (can be undefined) */
+  optional(): FieldBuilder<T, true, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey>;
+
+  /** Set default value */
+  default(value: T): FieldBuilder<T, Optional, true, IsIndexed, AutoIncrement, IsPrimaryKey>;
+
+  /** Create an index on this field */
+  index(options?: IndexOptions): FieldBuilder<T, Optional, HasDefault, true, AutoIncrement, IsPrimaryKey>;
+
+  /** Convert to array type */
+  array(): FieldBuilder<T[], Optional, HasDefault, IsIndexed, false, false>;
+}
+
+/** Field builder for number type (with autoIncrement support) */
+export interface NumberFieldBuilder<
+  Optional extends boolean = false,
+  HasDefault extends boolean = false,
+  IsIndexed extends boolean = false,
+  AutoIncrement extends boolean = false,
+  IsPrimaryKey extends boolean = false
+> extends BaseFieldBuilder<number, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> {
+  /** Mark as primary key */
+  
+  primaryKey(): NumberFieldBuilder<Optional, HasDefault, IsIndexed, false, true>;
+
+  /** Mark as primary key with autoIncrement: true (makes field optional in input) */
+  primaryKey(options: { autoIncrement: true }): NumberFieldBuilder<true, HasDefault, IsIndexed, true, true>;
+
+  /** Mark as primary key with autoIncrement: false (field remains required) */
+  primaryKey(options: { autoIncrement: false }): NumberFieldBuilder<Optional, HasDefault, IsIndexed, false, true>;
+}
+
+/** Field builder for non-number types (no autoIncrement) */
 export interface FieldBuilder<
   T,
   Optional extends boolean = false,
   HasDefault extends boolean = false,
-  IsIndexed extends boolean = false
-> {
-  _def: FieldDef<T, Optional, HasDefault, IsIndexed>;
-
-  /** Mark field as optional (can be undefined) */
-  optional(): FieldBuilder<T, true, HasDefault, IsIndexed>;
-
-  /** Set default value */
-  default(value: T): FieldBuilder<T, Optional, true, IsIndexed>;
-
+  IsIndexed extends boolean = false,
+  AutoIncrement extends boolean = false,
+  IsPrimaryKey extends boolean = false
+> extends BaseFieldBuilder<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> {
   /** Mark as primary key */
-  primaryKey(): FieldBuilder<T, Optional, HasDefault, IsIndexed>;
-
-  /** Create an index on this field */
-  index(options?: IndexOptions): FieldBuilder<T, Optional, HasDefault, true>;
-
-  /** Convert to array type */
-  array(): FieldBuilder<T[], Optional, HasDefault, IsIndexed>;
+  primaryKey(): FieldBuilder<T, Optional, HasDefault, IsIndexed, false, true>;
 }
 
 // ============================================================================
@@ -138,12 +177,13 @@ export interface FieldBuilder<
 // ============================================================================
 
 function createFieldBuilder<T>(): FieldBuilder<T> {
-  const def: FieldDef<T, false, false, false> = {
+  const def: FieldDef<T, false, false, false, false> = {
     _type: undefined as T,
     _optional: false,
     _hasDefault: false,
     _isIndexed: false,
-    _primaryKey: false,
+    _autoIncrement: false,
+    _isPrimaryKey: false,
   };
 
   const builder: FieldBuilder<T> = {
@@ -153,32 +193,87 @@ function createFieldBuilder<T>(): FieldBuilder<T> {
       return {
         ...this,
         _def: { ...this._def, _optional: true },
-      } as unknown as FieldBuilder<T, true, false, false>;
+      } as unknown as FieldBuilder<T, true, false, false, false>;
     },
 
     default(value: T) {
       return {
         ...this,
         _def: { ...this._def, _hasDefault: true, _default: value },
-      } as unknown as FieldBuilder<T, false, true, false>;
+      } as unknown as FieldBuilder<T, false, true, false, false>;
     },
 
     primaryKey() {
       return {
         ...this,
-        _def: { ...this._def, _primaryKey: true },
-      } as unknown as FieldBuilder<T, false, false, false>;
+        _def: { ...this._def, _isPrimaryKey: true },
+      } as unknown as FieldBuilder<T, false, false, false, false, true>;
     },
 
     index(options?: IndexOptions) {
       return {
         ...this,
         _def: { ...this._def, _isIndexed: true, _indexOptions: options },
-      } as unknown as FieldBuilder<T, false, false, true>;
+      } as unknown as FieldBuilder<T, false, false, true, false>;
     },
 
     array() {
-      return createFieldBuilder<T[]>() as unknown as FieldBuilder<T[], false, false, false>;
+      return createFieldBuilder<T[]>() as unknown as FieldBuilder<T[], false, false, false, false>;
+    },
+  };
+
+  return builder;
+}
+
+function createNumberFieldBuilder(): NumberFieldBuilder {
+  const def: FieldDef<number, false, false, false, false> = {
+    _type: undefined as unknown as number,
+    _optional: false,
+    _hasDefault: false,
+    _isIndexed: false,
+    _autoIncrement: false,
+    _isPrimaryKey: false,
+  };
+
+  const builder: NumberFieldBuilder = {
+    _def: def,
+
+    optional() {
+      return {
+        ...this,
+        _def: { ...this._def, _optional: true },
+      } as unknown as NumberFieldBuilder<true, false, false, false>;
+    },
+
+    default(value: number) {
+      return {
+        ...this,
+        _def: { ...this._def, _hasDefault: true, _default: value },
+      } as unknown as NumberFieldBuilder<false, true, false, false>;
+    },
+
+    primaryKey(options?: AutoIncrementOptions): any {
+      const autoIncrement = options?.autoIncrement ?? false;
+      return {
+        ...this,
+        _def: {
+          ...this._def,
+          _isPrimaryKey: true,
+          _autoIncrement: autoIncrement,
+          _optional: autoIncrement,
+        },
+      };
+    },
+
+    index(options?: IndexOptions) {
+      return {
+        ...this,
+        _def: { ...this._def, _isIndexed: true, _indexOptions: options },
+      } as unknown as NumberFieldBuilder<false, false, true, false>;
+    },
+
+    array() {
+      return createFieldBuilder<number[]>() as unknown as FieldBuilder<number[], false, false, false, false>;
     },
   };
 
@@ -273,8 +368,8 @@ export const field = {
   /** String field */
   string: () => createFieldBuilder<string>(),
 
-  /** Number field */
-  number: () => createFieldBuilder<number>(),
+  /** Number field (supports autoIncrement for primary key) */
+  number: () => createNumberFieldBuilder(),
 
   /** Boolean field */
   boolean: () => createFieldBuilder<boolean>(),
@@ -339,33 +434,35 @@ export const field = {
 // ============================================================================
 
 /** Schema definition type */
-export type StoreSchema = Record<string, FieldBuilder<unknown, boolean, boolean, boolean>>;
+export type StoreSchema = Record<string, FieldBuilder<unknown, boolean, boolean, boolean, boolean, boolean> | NumberFieldBuilder<boolean, boolean, boolean, boolean, boolean>>;
 
-/** Extract required input keys (not optional, no default) */
+/** Extract required input keys (not optional, no default, not autoIncrement) */
 type RequiredInputKeys<S extends StoreSchema> = {
-  [K in keyof S]: S[K] extends FieldBuilder<unknown, false, false, boolean> ? K : never;
+  [K in keyof S]: S[K] extends { _def: { _optional: false; _hasDefault: false; _autoIncrement: false } } ? K : never;
 }[keyof S];
 
-/** Extract optional input keys */
+/** Extract optional input keys (optional OR has default OR autoIncrement) */
 type OptionalInputKeys<S extends StoreSchema> = Exclude<keyof S, RequiredInputKeys<S>>;
 
 /**
  * Infer input type from schema (for put/add operations)
  */
-export type InferInput<S extends StoreSchema> = 
-  { [K in RequiredInputKeys<S>]: S[K] extends FieldBuilder<infer T, boolean, boolean, boolean> ? T : never } &
-  { [K in OptionalInputKeys<S>]?: S[K] extends FieldBuilder<infer T, boolean, boolean, boolean> ? T : never };
+export type InferInput<S extends StoreSchema> =
+  { [K in RequiredInputKeys<S>]: S[K] extends { _def: { _type: infer T } } ? T : never } &
+  { [K in OptionalInputKeys<S>]?: S[K] extends { _def: { _type: infer T } } ? T : never };
 
 /**
  * Infer output field type
  */
-type InferOutputField<F> = 
-  F extends FieldBuilder<infer T, infer Optional, infer HasDefault, boolean>
+type InferOutputField<F> =
+  F extends { _def: { _type: infer T; _optional: infer Optional; _hasDefault: infer HasDefault; _autoIncrement: infer AutoInc } }
     ? HasDefault extends true
       ? T
-      : Optional extends true
-        ? T | undefined
-        : T
+      : AutoInc extends true
+        ? T  // autoIncrement fields are always present in output
+        : Optional extends true
+          ? T | undefined
+          : T
     : never;
 
 /**
@@ -379,16 +476,20 @@ export type InferOutput<S extends StoreSchema> = Prettify<{
  * Extract primary key field name from schema
  */
 export type PrimaryKeyField<S extends StoreSchema> = {
-  [K in keyof S]: S[K] extends FieldBuilder<unknown, boolean, boolean, boolean>
-    ? S[K]['_def']['_primaryKey'] extends true ? K : never
-    : never;
+  [K in keyof S]: S[K] extends { _def: { _isPrimaryKey: true } } ? K : never;
 }[keyof S];
 
 /**
  * Extract primary key type from schema
  */
-export type PrimaryKeyType<S extends StoreSchema> = 
-  S[PrimaryKeyField<S>] extends FieldBuilder<infer T, boolean, boolean, boolean> ? T : never;
+export type PrimaryKeyType<S extends StoreSchema> =
+  S[PrimaryKeyField<S>] extends { _def: { _type: infer T } } ? T : never;
+
+/**
+ * Check if schema has autoIncrement primary key
+ */
+export type HasAutoIncrement<S extends StoreSchema> =
+  S[PrimaryKeyField<S>] extends { _def: { _autoIncrement: true } } ? true : false;
 
 // ============================================================================
 // Index Field Extraction
@@ -398,21 +499,21 @@ export type PrimaryKeyType<S extends StoreSchema> =
  * Extract field names that have indexes
  */
 export type IndexedFields<S extends StoreSchema> = {
-  [K in keyof S]: S[K] extends FieldBuilder<unknown, boolean, boolean, true> ? K : never;
+  [K in keyof S]: S[K] extends { _def: { _isIndexed: true } } ? K : never;
 }[keyof S];
 
 /**
  * Map of index field names to their types
  */
 export type IndexFieldTypes<S extends StoreSchema> = {
-  [K in IndexedFields<S>]: S[K] extends FieldBuilder<infer T, boolean, boolean, boolean> ? T : never;
+  [K in IndexedFields<S>]: S[K] extends { _def: { _type: infer T } } ? T : never;
 };
 
 /**
  * Get field type by field name
  */
 export type FieldType<S extends StoreSchema, K extends keyof S> =
-  S[K] extends FieldBuilder<infer T, boolean, boolean, boolean> ? T : never;
+  S[K] extends { _def: { _type: infer T } } ? T : never;
 
 // ============================================================================
 // Store Type Inference
@@ -452,6 +553,7 @@ export interface DefinedStore<T> {
   name: string;
   schema: StoreSchema;
   keyPath: string;
+  autoIncrement: boolean;
   indexes: readonly unknown[];
   migrations: readonly unknown[];
   defaults: Partial<T>;

@@ -4,7 +4,6 @@ import type {
   InferOutput,
   PrimaryKeyField,
   PrimaryKeyType,
-  FieldBuilder,
 } from './field.js';
 import type { StoreDefinition, IndexDefinition, Migration, MigrationFn } from './types.js';
 
@@ -60,6 +59,7 @@ export interface SchemaStoreDefinition<
   name: TName;
   schema: S;
   keyPath: PrimaryKeyField<S>;
+  autoIncrement: boolean;
   indexes: IndexDefinition[];
   migrations: Migration[];
   defaults: Partial<InferOutput<S>>;
@@ -76,22 +76,25 @@ export interface SchemaStoreDefinition<
 
 function parseSchema<S extends StoreSchema>(schema: S): {
   keyPath: string | undefined;
+  autoIncrement: boolean;
   indexes: IndexDefinition[];
   defaults: Record<string, unknown>;
 } {
   let keyPath: string | undefined;
+  let autoIncrement = false;
   const indexes: IndexDefinition[] = [];
   const defaults: Record<string, unknown> = {};
 
   for (const [fieldName, fieldBuilder] of Object.entries(schema)) {
-    const def = (fieldBuilder as FieldBuilder<unknown, boolean, boolean, boolean>)._def;
+    const def = (fieldBuilder as { _def: { _isPrimaryKey: boolean; _autoIncrement?: boolean; _isIndexed: boolean; _indexOptions?: { unique?: boolean; multiEntry?: boolean }; _hasDefault: boolean; _default?: unknown } })._def;
 
     // Primary key
-    if (def._primaryKey) {
+    if (def._isPrimaryKey) {
       if (keyPath) {
         throw new Error(`Multiple primary keys defined: "${keyPath}" and "${fieldName}"`);
       }
       keyPath = fieldName;
+      autoIncrement = def._autoIncrement ?? false;
     }
 
     // Index
@@ -110,7 +113,7 @@ function parseSchema<S extends StoreSchema>(schema: S): {
     }
   }
 
-  return { keyPath, indexes, defaults };
+  return { keyPath, autoIncrement, indexes, defaults };
 }
 
 // ============================================================================
@@ -193,7 +196,7 @@ export function defineStore<const TName extends string, S extends StoreSchema>(
   }
 
   // Parse schema
-  const { keyPath, indexes, defaults } = parseSchema(schema);
+  const { keyPath, autoIncrement, indexes, defaults } = parseSchema(schema);
 
   // Validate primary key
   if (!keyPath) {
@@ -220,6 +223,7 @@ export function defineStore<const TName extends string, S extends StoreSchema>(
     name,
     schema,
     keyPath: keyPath as PrimaryKeyField<S>,
+    autoIncrement,
     indexes,
     migrations: [...migrations].sort((a, b) => a.name.localeCompare(b.name)),
     defaults: defaults as Partial<InferOutput<S>>,
@@ -244,7 +248,7 @@ export function toStoreDefinition<S extends StoreSchema, TName extends string>(
   return {
     name: store.name,
     keyPath: store.keyPath as string,
-    autoIncrement: false,
+    autoIncrement: store.autoIncrement,
     indexes: store.indexes,
     migrations: store.migrations,
     _schema: {} as InferOutput<S>,
