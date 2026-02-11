@@ -11,9 +11,12 @@ export interface IndexOptions {
   multiEntry?: boolean;
 }
 
-export interface AutoIncrementOptions {
-  autoIncrement?: boolean;
-}
+/**
+ * Primary key options - autoIncrement only available for number type
+ */
+export type PrimaryKeyOptions<T> = T extends number
+  ? { autoIncrement?: boolean }
+  : Record<string, never>;
 
 // ============================================================================
 // Type Builder (for nested types - no index/primaryKey)
@@ -116,8 +119,12 @@ export interface FieldDef<
 // Field Builder Interface
 // ============================================================================
 
-/** Base field builder interface */
-interface BaseFieldBuilder<
+/**
+ * Unified field builder interface
+ * - autoIncrement option is only available when T extends number
+ * - Uses conditional types for type-safe primaryKey options
+ */
+export interface FieldBuilder<
   T,
   Optional extends boolean = false,
   HasDefault extends boolean = false,
@@ -138,38 +145,17 @@ interface BaseFieldBuilder<
 
   /** Convert to array type */
   array(): FieldBuilder<T[], Optional, HasDefault, IsIndexed, false, false>;
-}
 
-/** Field builder for number type (with autoIncrement support) */
-export interface NumberFieldBuilder<
-  Optional extends boolean = false,
-  HasDefault extends boolean = false,
-  IsIndexed extends boolean = false,
-  AutoIncrement extends boolean = false,
-  IsPrimaryKey extends boolean = false
-> extends BaseFieldBuilder<number, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> {
-  /** Mark as primary key */
-  
-  primaryKey(): NumberFieldBuilder<Optional, HasDefault, IsIndexed, false, true>;
-
-  /** Mark as primary key with autoIncrement: true (makes field optional in input) */
-  primaryKey(options: { autoIncrement: true }): NumberFieldBuilder<true, HasDefault, IsIndexed, true, true>;
-
-  /** Mark as primary key with autoIncrement: false (field remains required) */
-  primaryKey(options: { autoIncrement: false }): NumberFieldBuilder<Optional, HasDefault, IsIndexed, false, true>;
-}
-
-/** Field builder for non-number types (no autoIncrement) */
-export interface FieldBuilder<
-  T,
-  Optional extends boolean = false,
-  HasDefault extends boolean = false,
-  IsIndexed extends boolean = false,
-  AutoIncrement extends boolean = false,
-  IsPrimaryKey extends boolean = false
-> extends BaseFieldBuilder<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> {
-  /** Mark as primary key */
-  primaryKey(): FieldBuilder<T, Optional, HasDefault, IsIndexed, false, true>;
+  /**
+   * Mark as primary key
+   * - For number type: supports { autoIncrement: boolean } option
+   * - For other types: no options allowed
+   */
+  primaryKey<Options extends PrimaryKeyOptions<T>>(
+    options?: Options
+  ): Options extends { autoIncrement: true }
+    ? FieldBuilder<T, true, HasDefault, IsIndexed, true, true>
+    : FieldBuilder<T, Optional, HasDefault, IsIndexed, false, true>
 }
 
 // ============================================================================
@@ -177,7 +163,7 @@ export interface FieldBuilder<
 // ============================================================================
 
 function createFieldBuilder<T>(): FieldBuilder<T> {
-  const def: FieldDef<T, false, false, false, false> = {
+  const def: FieldDef<T, false, false, false, false, false> = {
     _type: undefined as T,
     _optional: false,
     _hasDefault: false,
@@ -193,66 +179,17 @@ function createFieldBuilder<T>(): FieldBuilder<T> {
       return {
         ...this,
         _def: { ...this._def, _optional: true },
-      } as unknown as FieldBuilder<T, true, false, false, false>;
+      } as unknown as FieldBuilder<T, true, false, false, false, false>;
     },
 
     default(value: T) {
       return {
         ...this,
         _def: { ...this._def, _hasDefault: true, _default: value },
-      } as unknown as FieldBuilder<T, false, true, false, false>;
+      } as unknown as FieldBuilder<T, false, true, false, false, false>;
     },
 
-    primaryKey() {
-      return {
-        ...this,
-        _def: { ...this._def, _isPrimaryKey: true },
-      } as unknown as FieldBuilder<T, false, false, false, false, true>;
-    },
-
-    index(options?: IndexOptions) {
-      return {
-        ...this,
-        _def: { ...this._def, _isIndexed: true, _indexOptions: options },
-      } as unknown as FieldBuilder<T, false, false, true, false>;
-    },
-
-    array() {
-      return createFieldBuilder<T[]>() as unknown as FieldBuilder<T[], false, false, false, false>;
-    },
-  };
-
-  return builder;
-}
-
-function createNumberFieldBuilder(): NumberFieldBuilder {
-  const def: FieldDef<number, false, false, false, false> = {
-    _type: undefined as unknown as number,
-    _optional: false,
-    _hasDefault: false,
-    _isIndexed: false,
-    _autoIncrement: false,
-    _isPrimaryKey: false,
-  };
-
-  const builder: NumberFieldBuilder = {
-    _def: def,
-
-    optional() {
-      return {
-        ...this,
-        _def: { ...this._def, _optional: true },
-      } as unknown as NumberFieldBuilder<true, false, false, false>;
-    },
-
-    default(value: number) {
-      return {
-        ...this,
-        _def: { ...this._def, _hasDefault: true, _default: value },
-      } as unknown as NumberFieldBuilder<false, true, false, false>;
-    },
-
-    primaryKey(options?: AutoIncrementOptions): any {
+    primaryKey(options?: { autoIncrement?: boolean }): any {
       const autoIncrement = options?.autoIncrement ?? false;
       return {
         ...this,
@@ -260,7 +197,7 @@ function createNumberFieldBuilder(): NumberFieldBuilder {
           ...this._def,
           _isPrimaryKey: true,
           _autoIncrement: autoIncrement,
-          _optional: autoIncrement,
+          _optional: autoIncrement ? true : this._def._optional,
         },
       };
     },
@@ -269,11 +206,11 @@ function createNumberFieldBuilder(): NumberFieldBuilder {
       return {
         ...this,
         _def: { ...this._def, _isIndexed: true, _indexOptions: options },
-      } as unknown as NumberFieldBuilder<false, false, true, false>;
+      } as unknown as FieldBuilder<T, false, false, true, false, false>;
     },
 
     array() {
-      return createFieldBuilder<number[]>() as unknown as FieldBuilder<number[], false, false, false, false>;
+      return createFieldBuilder<T[]>() as unknown as FieldBuilder<T[], false, false, false, false, false>;
     },
   };
 
@@ -369,7 +306,7 @@ export const field = {
   string: () => createFieldBuilder<string>(),
 
   /** Number field (supports autoIncrement for primary key) */
-  number: () => createNumberFieldBuilder(),
+  number: () => createFieldBuilder<number>(),
 
   /** Boolean field */
   boolean: () => createFieldBuilder<boolean>(),
@@ -434,7 +371,7 @@ export const field = {
 // ============================================================================
 
 /** Schema definition type */
-export type StoreSchema = Record<string, FieldBuilder<unknown, boolean, boolean, boolean, boolean, boolean> | NumberFieldBuilder<boolean, boolean, boolean, boolean, boolean>>;
+export type StoreSchema = Record<string, FieldBuilder<unknown, boolean, boolean, boolean, boolean, boolean>>;
 
 /** Extract required input keys (not optional, no default, not autoIncrement) */
 type RequiredInputKeys<S extends StoreSchema> = {

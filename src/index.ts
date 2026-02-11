@@ -31,13 +31,12 @@ export { field } from './field.js';
 // Field types
 export type {
   FieldBuilder,
-  NumberFieldBuilder,
   FieldDef,
   TypeBuilder,
   TypeDef,
   TypeFactory,
   IndexOptions,
-  AutoIncrementOptions,
+  PrimaryKeyOptions,
   StoreSchema,
   InferInput,
   InferOutput,
