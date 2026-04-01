@@ -1,70 +1,19 @@
-/**
- * IDB Wrapper - Type-safe IndexedDB wrapper with chainable transactions
- *
- * @example Schema-based API (recommended)
- * ```ts
- * import { openDB, defineStore, field } from 'idb-wrapper';
- *
- * const usersStore = defineStore('users', {
- *   id: field.string().primaryKey(),
- *   name: field.string(),
- *   email: field.string().index({ unique: true }),
- *   age: field.number().optional().default(0),
- * });
- *
- * const db = await openDB({
- *   name: 'MyApp',
- *   version: 1,
- *   stores: [usersStore] as const,
- * });
- *
- * await db.users.put({ id: 'u1', name: 'Kim', email: 'kim@test.com' });
- * const user = await db.users.get('u1');
- * ```
- */
-
-// Schema-based API (recommended)
-export { defineStore } from './schema.js';
-export { openDB } from './createSchemaDB.js';
-export { field } from './field.js';
+export { defineStore } from './schema';
+export { openDB } from './createSchemaDB';
+export { field } from './field';
 
 // Field types
-export type {
-  FieldBuilder,
-  FieldDef,
-  TypeBuilder,
-  TypeDef,
-  TypeFactory,
-  IndexOptions,
-  PrimaryKeyOptions,
-  StoreSchema,
-  InferInput,
-  InferOutput,
-  InferStore,
-  DefinedStore,
-  PrimaryKeyField,
-  PrimaryKeyType,
-  HasAutoIncrement,
-  IndexedFields,
-  IndexFieldTypes,
-} from './field.js';
-
-// Schema store types
-export type { SchemaStoreDefinition, SchemaStoreBuilder, DefineStoreOptions } from './schema.js';
+export type { InferStore } from './field';
 
 // Database types
-export type {
-  SchemaDBConfig,
-  SchemaDatabase,
-  SchemaStoreAccessor,
-} from './createSchemaDB.js';
+export type { SchemaDBConfig } from './createSchemaDB';
 
 // Transaction types
 export type {
   Transaction,
   TransactionOptions,
   TransactionStoreAccessor,
-} from './transaction.js';
+} from './transaction';
 
 // Query types
 export type {
@@ -77,21 +26,7 @@ export type {
   FinalQueryBuilder,
   SortOrder,
   WhereCondition,
-} from './query.js';
+} from './query';
 
 // Utilities
-export {
-  promisifyRequest,
-  promisifyTransaction,
-  openDatabase,
-  deleteDB,
-  isIndexedDBAvailable,
-} from './utils.js';
-
-// Legacy types (for internal use)
-export type {
-  StoreDefinition,
-  IndexDefinition,
-  Migration,
-  MigrationFn,
-} from './types.js';
+export { deleteDB, isIndexedDBAvailable } from './utils';
