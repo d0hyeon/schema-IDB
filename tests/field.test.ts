@@ -27,7 +27,7 @@ describe('Field Builder', () => {
       const f = field.string();
       expect(f._def._optional).toBe(false);
       expect(f._def._hasDefault).toBe(false);
-      expect(f._def._primaryKey).toBe(false);
+      expect(f._def._isPrimaryKey).toBe(false);
       expect(f._def._isIndexed).toBe(false);
     });
 
@@ -88,15 +88,15 @@ describe('Field Builder', () => {
   describe('체인 메서드 - primaryKey()', () => {
     it('primaryKey()는 필드를 기본 키로 지정해야 함', () => {
       const f = field.string().primaryKey();
-      expect(f._def._primaryKey).toBe(true);
+      expect(f._def._isPrimaryKey).toBe(true);
     });
 
     it('primaryKey()는 원본 필드를 변경하지 않아야 함', () => {
       const original = field.string();
       const pk = original.primaryKey();
 
-      expect(original._def._primaryKey).toBe(false);
-      expect(pk._def._primaryKey).toBe(true);
+      expect(original._def._isPrimaryKey).toBe(false);
+      expect(pk._def._isPrimaryKey).toBe(true);
     });
   });
 
@@ -230,7 +230,7 @@ describe('Field Builder', () => {
 
     it('primaryKey와 다른 메서드를 조합할 수 있어야 함', () => {
       const f = field.number().primaryKey();
-      expect(f._def._primaryKey).toBe(true);
+      expect(f._def._isPrimaryKey).toBe(true);
     });
 
     it('array와 index를 조합할 수 있어야 함', () => {

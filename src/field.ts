@@ -162,55 +162,52 @@ export interface FieldBuilder<
 // Field Builder Implementation
 // ============================================================================
 
-function createFieldBuilder<T>(): FieldBuilder<T> {
-  const def: FieldDef<T, false, false, false, false, false> = {
+function createFieldBuilder<
+  T,
+  Optional extends boolean = false,
+  HasDefault extends boolean = false,
+  IsIndexed extends boolean = false,
+  AutoIncrement extends boolean = false,
+  IsPrimaryKey extends boolean = false,
+>(
+  def?: FieldDef<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey>
+): FieldBuilder<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> {
+  const resolvedDef = (def ?? {
     _type: undefined as T,
     _optional: false,
     _hasDefault: false,
     _isIndexed: false,
     _autoIncrement: false,
     _isPrimaryKey: false,
-  };
+  }) as FieldDef<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey>;
 
-  const builder: FieldBuilder<T> = {
-    _def: def,
+  const builder: FieldBuilder<T, Optional, HasDefault, IsIndexed, AutoIncrement, IsPrimaryKey> = {
+    _def: resolvedDef,
 
     optional() {
-      return {
-        ...this,
-        _def: { ...this._def, _optional: true },
-      } as unknown as FieldBuilder<T, true, false, false, false, false>;
+      return createFieldBuilder({ ...this._def, _optional: true as true });
     },
 
     default(value: T) {
-      return {
-        ...this,
-        _def: { ...this._def, _hasDefault: true, _default: value },
-      } as unknown as FieldBuilder<T, false, true, false, false, false>;
+      return createFieldBuilder({ ...this._def, _hasDefault: true as true, _default: value });
     },
 
     primaryKey(options?: { autoIncrement?: boolean }): any {
       const autoIncrement = options?.autoIncrement ?? false;
-      return {
-        ...this,
-        _def: {
-          ...this._def,
-          _isPrimaryKey: true,
-          _autoIncrement: autoIncrement,
-          _optional: autoIncrement ? true : this._def._optional,
-        },
-      };
+      return createFieldBuilder({
+        ...this._def,
+        _isPrimaryKey: true as true,
+        _autoIncrement: autoIncrement,
+        _optional: autoIncrement ? true : this._def._optional,
+      });
     },
 
     index(options?: IndexOptions) {
-      return {
-        ...this,
-        _def: { ...this._def, _isIndexed: true, _indexOptions: options },
-      } as unknown as FieldBuilder<T, false, false, true, false, false>;
+      return createFieldBuilder({ ...this._def, _isIndexed: true as true, _indexOptions: options });
     },
 
-    array() {
-      return createFieldBuilder<T[]>() as unknown as FieldBuilder<T[], false, false, false, false, false>;
+    array(): any {
+      return createFieldBuilder<T[]>();
     },
   };
 
@@ -468,6 +465,20 @@ export type InferStore<TStore> = TStore extends { schema: infer S }
     : never
   : never;
 
+/**
+ * Constrains a schema so that each field's _type matches the corresponding property of T.
+ * Used as the schema argument type in defineStore<T>() for type-first definitions.
+ *
+ * @example
+ * interface User { id: number; name: string; age?: number; }
+ *
+ * defineStore<User>('users', {
+ *   id: field.number().primaryKey(),  // ✅ _type: number matches User['id']
+ *   name: field.string(),             // ✅ _type: string matches User['name']
+ *   age: field.number().optional(),   // ✅ _type: number matches User['age']
+ *   email: field.string(),            // ❌ 'email' does not exist in User → error here
+ * });
+ */
 /**
  * Type constraint for type-first store definitions
  * Use with `satisfies` to validate schema against a pre-defined type
